@@ -30,12 +30,8 @@ class Russound:
     def connect(self, keypad):
         """ Connect to the tcp gateway """
 
-        try:
-            self.sock.connect((self._host, self._port))
-            self._keypad = keypad
-        except socket.error as msg:
-            print("Couldn't connect to %s:%d - %s" % (self._host, self._port, msg))
-            sys.exit(1)
+        self.sock.connect((self._host, self._port))
+        self._keypad = keypad
 
     def parse_to_hex(self, value, zc=None):
         """ Parse to hex """
@@ -96,7 +92,7 @@ class Russound:
         self.send_data(data)
 
     def all_on_off(self):
-        """" Turn all zones on or off """"
+        """ Turn all zones on or off """
 
         request = "F0 7F 00 7F 00 00 kk 05 02 02 00 00 F1 22 00 00 ## 00 00 01"
         data = request.split()
