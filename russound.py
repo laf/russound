@@ -13,6 +13,7 @@ the source code distribution for details.
 
 import logging
 import sys
+import time
 import socket
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,57 +27,152 @@ class Russound:
         self._port = int(port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    def connect(self):
+    def connect(self, keypad):
         """ Connect to the tcp gateway """
 
         try:
             self.sock.connect((self._host, self._port))
+            self._keypad = keypad
         except socket.error as msg:
             print("Couldn't connect to %s:%d - %s" % (self._host, self._port, msg))
             sys.exit(1)
 
+    def parse_to_hex(self, value, zc=None):
+        """ Parse to hex """
+
+        value = int(value)
+        if zc:
+            value = value-1
+        value = hex(value).lstrip("0x")
+        if not value:
+            value = '0'
+        return(value)
+
     def set_power(self, controller, zone, power):
         """ Switch power on/off to a zone """
 
-        event_id = '23'
-        data = [controller, zone, power, event_id]
-        data = self.format_data(data)
+        cc = self.parse_to_hex(controller, True)
+        zz = self.parse_to_hex(zone, True)
+        request = "F0 cc 00 7F cc 00 kk 05 02 02 00 00 F1 23 00 ## 00 zz 00 01"
+        data = request.split()
+        data[1] = cc
+        data[4] = cc
+        data[6] = self._keypad
+        data[15] = power
+        data[17] = zz
+        data = self.calc_checksum(data) 
         self.send_data(data)
 
     def set_volume(self, controller, zone, volume):
         """ Set volume for zone to specific value """
 
-        event_id = '21'
-        hex_volume = int(volume)//2
-        hex_volume = str(hex(hex_volume).lstrip("0x"))
-        data = [controller, zone, hex_volume, event_id]
-        data = self.format_data(data)
+        cc = self.parse_to_hex(controller, True)
+        zz = self.parse_to_hex(zone, True)
+        request = "F0 cc 00 7F cc 00 kk 05 02 02 00 00 F1 21 00 ## 00 zz 00 01"
+        volume = int(volume)//2
+        volume = self.parse_to_hex(volume)
+        data = request.split()
+        data[1] = cc
+        data[4] = cc
+        data[6] = self._keypad
+        data[15] = volume
+        data[17] = zz
+        data = self.calc_checksum(data)
         self.send_data(data)
 
     def set_source(self, controller, zone, source):
         """ Set source for a zone """
 
-        event_id = '3E'
-        data = [controller, zone, source, event_id]
-        data = self.format_data(data)
+        cc = self.parse_to_hex(controller, True)
+        zz = self.parse_to_hex(zone, True)
+        source = self.parse_to_hex(source, True)
+        request = "F0 cc 00 7F 00 zz kk 05 02 00 00 00 F1 3E 00 00 00 ## 00 01"        
+        data = request.split()
+        data[1] = cc
+        data[5] = zz
+        data[6] = self._keypad
+        data[17] = source
+        data = self.calc_checksum(data)
         self.send_data(data)
 
-    def format_data(self, data):
-        """ Format the data for sending """
+    def all_on_off(self):
+        """" Turn all zones on or off """"
 
-        static_data = ['F0', 'CTRL', '00', '7F', '00', '00', '70', '05', '02', '02', '00', '00', 'F1', 'EID', '00', 'ACT', '00', 'ZONE', '00', '01']
-        static_data[1] = '{0:02x}'.format(int(data[0],16))
-        static_data[17] = '{0:02x}'.format(int(data[1],16))
-        static_data[15] = '{0:02x}'.format(int(data[2],16))
-        static_data[13] = '{0:02x}'.format(int(data[3],16))
-        return(self.calc_checksum(static_data))
+        request = "F0 7F 00 7F 00 00 kk 05 02 02 00 00 F1 22 00 00 ## 00 00 01"
+        data = request.split()
+        data[6] = self._keypad
+        data[17] = power
+        data = self.calc_checksum(data)
+        self.send_data(data)
+
+    def toggle_mute(self, controller, zone):
+        """ Toggle mute on/off for a zone """
+
+        cc = self.parse_to_hex(controller, True)
+        zz = self.parse_to_hex(zone, True)
+        request = "F0 cc 00 7F 00 zz kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01"
+        data = request.split()
+        data[1] = cc
+        data[5] = zz
+        data[6] = self._keypad
+        data = self.calc_checksum(data)
+        self.send_data(data)
+
+    def get_power(self, controller, zone):
+        """ Get source power status """
+
+        cc = self.parse_to_hex(controller, True)
+        zz = self.parse_to_hex(zone, True)
+        request = "F0 cc 00 7F 00 00 kk 01 04 02 00 zz 06 00 00"
+        data = request.split()
+        data[1] = cc
+        data[6] = self._keypad
+        data[11] = zz
+        data = self.calc_checksum(data)
+        self.send_data(data)
 
     def send_data(self, data):
         """ Send data to connected gateway """
 
         for item in data:
-            data = bytes.fromhex(str(item))
+            data = bytes.fromhex(str(item.zfill(2)))
             self.sock.send(data)
+
+    def receive_data(self, timeout=2):
+        """ Receive data from connected gateway """
+
+        self.sock.setblocking(0)
+     
+        #total data partwise in an array
+        total_data=[];
+        data='';
+     
+        #beginning time
+        begin=time.time()
+        while 1:
+            #if you got some data, then break after timeout
+            if total_data and time.time()-begin > timeout:
+                break
+         
+            #if you got no data at all, wait a little longer, twice the timeout
+            elif time.time()-begin > timeout*2:
+                break
+         
+            #recv something
+            try:
+                data = self.sock.recv(8192)
+                if data:
+                    total_data.append(data)
+                    #change the beginning time for measurement
+                    begin=time.time()
+                else:
+                    #sleep for sometime to indicate a gap
+                    time.sleep(0.1)
+            except:
+                pass
+     
+        #join all parts to make final string
+        return b''.join(total_data)
 
     def calc_checksum(self, data):
         """ Calculate the checksum we need """
@@ -88,10 +184,8 @@ class Russound:
 
         output = output + length
         checksum = hex(output & int('0x007F', 16)).lstrip("0x")
-        checksum = int(checksum)
         data.append(checksum)
         data.append('F7')
-        print(data)
         return data
 
     def __exit__(self):
