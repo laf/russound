@@ -30,8 +30,23 @@ class Russound:
     def connect(self, keypad):
         """ Connect to the tcp gateway """
 
-        self.sock.connect((self._host, self._port))
-        self._keypad = keypad
+        try:
+            self.sock.connect((self._host, self._port))
+            self._keypad = keypad
+        except socket.error as msg:
+            _LOGGER.error(msg)
+            return False
+
+    def is_connected(self):
+        """ Check we are connected """
+
+        try:
+            if self.sock.getpeername():
+                return True
+            else:
+                return False
+        except:
+            return False
 
     def parse_to_hex(self, value, zc=None):
         """ Parse to hex """
