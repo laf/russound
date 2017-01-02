@@ -253,6 +253,7 @@ class Russound:
                         "Try resetting the bridge you are using to connect.")
                 _LOGGER.error(msg)
             time.sleep(delay)  # Wait before reading again
+        _LOGGER.debug(data)
         return data
 
     def find_matching_message(self, data_stream, msg_signature):
@@ -278,6 +279,7 @@ class Russound:
                         break
                 if matched_message is not None:  # Loop complete.  If match found break out of out loop.
                     break
+        _LOGGER.debug(matched_message)
         return matched_message
 
     def get_received_messages(self, data_stream):
@@ -295,6 +297,7 @@ class Russound:
                     message = data_stream[start_index:end_index + 1]
                     start_index = -1
                     messages.append(message)
+        _LOGGER.debug(messages)
         return messages
 
     def calc_checksum(self, data):
