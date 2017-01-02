@@ -15,7 +15,7 @@ CURRENT_DIR = os.path.dirname(__file__)
 # and be sure to test it firstly using "python setup.py register sdist upload -r pypitest"
 setup(name='russound',
       # version=open(os.path.join(CURRENT_DIR, 'xgboost/VERSION')).read().strip(),
-      version='0.1.6',
+      version='0.1.7',
       description=open(os.path.join(CURRENT_DIR, 'README.md')).read(),
       install_requires=['requests'],
       maintainer='Neil Lathwood',
