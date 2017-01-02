@@ -69,6 +69,7 @@ class Russound:
 
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 23 00 @pr 00 @zz 00 01",
                                             controller, zone, power)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
         self.receive_data()  # Clear response buffer
         _LOGGER.info("Russound on controller %s and zone %s power set to %s.", controller, zone, power)
@@ -82,6 +83,7 @@ class Russound:
         _LOGGER.info("Russound volume on controller %s and zone %s set to level %s.", controller, zone, volume)
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 21 00 @pr 00 @zz 00 01",
                                             controller, zone, volume//2)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
         self.receive_data()  # Clear response buffer
 
@@ -90,6 +92,7 @@ class Russound:
 
         send_msg = self.create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 00 00 00 F1 3E 00 00 00 @pr 00 01",
                                             controller, zone, source)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
         self.receive_data()  # Clear response buffer in case there is any response data (ensures correct results on future reads)
 
@@ -125,7 +128,7 @@ class Russound:
             "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 06 00 00 01 00 01 00 FF FF F7", zone)
 
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 06 00 00", controller, zone)
-
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
         response_stream = self.receive_data()  # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
         matching_message = self.find_matching_message(response_stream, resp_msg_signature)
@@ -150,6 +153,7 @@ class Russound:
             "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 01 00 00 01 00 01 00 FF FF F7", zone)
 
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 01 00 00", controller, zone)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
         response_stream = self.receive_data()
         matching_message = self.find_matching_message(response_stream, resp_msg_signature)
@@ -172,6 +176,7 @@ class Russound:
             "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 02 00 00 01 00 01 00 FF FF F7", zone)
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 02 00 00", controller, zone)
         data = self.calc_checksum(send_msg)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(data)
         response_stream = self.receive_data()
         matching_message = self.find_matching_message(response_stream, resp_msg_signature)
