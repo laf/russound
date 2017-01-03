@@ -31,6 +31,7 @@ class Russound:
         self._host = host
         self._port = int(port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._last_send = time.time()  # Use this to keep track of when the last send command was sent
 
     def connect(self):
         """ Connect to the tcp gateway
@@ -130,8 +131,8 @@ class Russound:
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 06 00 00", controller, zone)
         _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
-        response_stream = self.receive_data()  # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
-        matching_message = self.find_matching_message(response_stream, resp_msg_signature)
+        matching_message = self.receive_data(resp_msg_signature)  # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
+        #matching_message = self.find_matching_message(response_stream, resp_msg_signature)
         if matching_message is not None:  # Check that the response is the correct length
             power_state = matching_message[20]
         else:
@@ -155,8 +156,8 @@ class Russound:
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 01 00 00", controller, zone)
         _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
-        response_stream = self.receive_data()
-        matching_message = self.find_matching_message(response_stream, resp_msg_signature)
+        matching_message = self.receive_data(resp_msg_signature)
+        #matching_message = self.find_matching_message(response_stream, resp_msg_signature)
         if matching_message is not None:
             volume_level = matching_message[20] * 2  # Note: Referencing a single value from a byte array converts to base10 automatically
         else:
@@ -178,8 +179,8 @@ class Russound:
         data = self.calc_checksum(send_msg)
         _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(data)
-        response_stream = self.receive_data()
-        matching_message = self.find_matching_message(response_stream, resp_msg_signature)
+        matching_message = self.receive_data(resp_msg_signature)
+        #matching_message = self.find_matching_message(response_stream, resp_msg_signature)
         if matching_message is not None:
             selected_source = matching_message[20]
         else:
@@ -223,7 +224,10 @@ class Russound:
     def send_data(self, data, delay=COMMAND_DELAY):
         """ Send data to connected gateway """
 
-        time.sleep(delay)  # Insert recommended delay to ensure command is processed correctly
+        time_since_last_send = time.time() - self._last_send
+        delay = max(0, delay - time_since_last_send)
+        time.sleep(delay)  # Ensure minim recommended delay since last send
+
         for item in data:
             data = bytes.fromhex(str(item.zfill(2)))
             try:
@@ -233,13 +237,20 @@ class Russound:
                         "Check that no other device or system is using the port that you are trying to connect to. "
                         "Try resetting the bridge you are using to connect.")
                 _LOGGER.error(msg)
+        self._last_send = time.time()
 
-    def receive_data(self, delay=COMMAND_DELAY, no_of_socket_reads=1):
+    def receive_data(self, resp_msg_signature=None, delay=COMMAND_DELAY):
         """ Receive data from connected gateway
         Based on testing, 100ms is enough to provide the full response message.  It is unlikely the this will be
         influenced heavily by the environment, since message a very short and typical operation is in a LAN context.
         Therefore by default we wait for 100ms before processing the recevie (as recommended) and make one read attempt.
         """
+
+        matching_message = None  # Set intial value to none
+        if resp_msg_signature is None:
+            no_of_socket_reads = 1  # If we are not looking for a specific resonse do a single read to clear the buffer
+        else:
+            no_of_socket_reads = 10 # Try 10 times (equates to 1s at default)if we are looking for a specific response
 
         time.sleep(delay)  # Insert recommended delay to ensure command is processed correctly
         self.sock.setblocking(0)  # Needed to prevent request for waiting indefinitely
@@ -257,9 +268,15 @@ class Russound:
                         "Check that no other device or system is using the port that you are tryiong to connect to. "
                         "Try resetting the bridge you are using to connect.")
                 _LOGGER.error(msg)
-            time.sleep(delay)  # Wait before reading again
+            # Check if we have our message.  If so break out else keep looping.
+            if resp_msg_signature is not None:
+                matching_message = self.find_matching_message(data, resp_msg_signature)
+            if matching_message is not None:
+                _LOGGER.debug("Number of reads=%s", i)
+                break
+            time.sleep(delay)  # Wait before reading again - default of 100ms
         _LOGGER.debug(data)
-        return data
+        return matching_message
 
     def find_matching_message(self, data_stream, msg_signature):
         """ Takes the stream of bytes received and looks for a message that matches the signature
