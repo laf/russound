@@ -118,7 +118,36 @@ class Russound:
         self.send_data(send_msg)
         self.receive_data()  # Clear response buffer
 
+    def get_zone_info(self, controller, zone, return_variable):
+        """ Get all relevant info for the zone """
+
+        # Define the signature for a response message, used later to find the correct response from the controller.
+        # FF is the hex we use to signify bytes that need to be ignored when comparing to response message.
+        resp_msg_signature = self.create_response_signature(
+            "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 07 00 00 01 00 0C 00 FF FF FF FF FF FF FF FF FF FF FF 00 FF F7", zone)
+
+        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 07 00 00", controller, zone)
+        _LOGGER.debug("Sending message %s", send_msg)
+        self.send_data(send_msg)
+        matching_message = self.receive_data(resp_msg_signature)  # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
+        if matching_message is not None:  # Check that the response is the correct length
+            return_value = matching_message[return_variable + 20]
+        else:
+            return_value = None
+            _LOGGER.warning("Error obtaining Russound power state for controller %s and zone %s.", controller, zone)
+            _LOGGER.warning("Did not receive expected response message from Russound controller.")
+        return return_value
+
     def get_power(self, controller, zone):
+        return self.get_zone_info(controller, zone, 0)
+
+    def get_source(self, controller, zone):
+        return self.get_zone_info(controller, zone, 1)
+
+    def get_volume(self, controller, zone):
+        return self.get_zone_info(controller, zone, 2) * 2
+
+    def get_power0(self, controller, zone):
         """ Get source power status
         :return: 0 power off, 1 power on
         """
@@ -141,7 +170,7 @@ class Russound:
             _LOGGER.warning("Did not receive expected response message from Russound controller.")
         return power_state
 
-    def get_volume(self, controller, zone):
+    def get_volume0(self, controller, zone):
         """ Get zone volume status
         Note that Russound internally has a volume range (0..50).  The expected result of this function is 0 to 100.
         Hence we multiply the result by 2.
@@ -166,7 +195,7 @@ class Russound:
             _LOGGER.warning("Did not receive expected response message from Russound controller.")
         return volume_level
 
-    def get_source(self, controller, zone):
+    def get_source0(self, controller, zone):
         """ Get the currently selected source for the zone
         :return: a zero based index of the source
         """
