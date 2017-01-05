@@ -10,6 +10,7 @@ logging.basicConfig(filename='russound_debugging.log', level=logging.DEBUG,
                     format='%(asctime)s:%(name)s:%(levelname)s:%(funcName)s():%(message)s')
 _LOGGER = logging.getLogger(__name__)
 
+
 def test1():
     x = russound.Russound(IP_ADDRESS, PORT)
     x.connect()
@@ -32,7 +33,7 @@ def test1():
 
 
 def test2():
-    """ Used this approach to determine what responses and when are turned from Russound """
+    """ Used this approach to determine what responses are returned from Russound """
     x = russound.Russound(IP_ADDRESS, PORT)
     x.connect()
     controller = '1'
@@ -62,7 +63,6 @@ def test2():
             #    print(response)
         time.sleep(0.1)
         t += 0.1
-
 
 
 def test3():
