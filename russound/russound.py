@@ -25,12 +25,16 @@ KEYPAD_CODE = '70'  # For an external system this is the required value (pg 28 o
 
 
 class Russound:
+    """ Implements a python API for selected commands to the Russound system using the RNET protocol.
+    The class is designed to maintain a connection to the Russound controller, and reads the controller state
+    directly from using RNET"""
     def __init__(self, host, port):
         """ Initialise Russound class """
 
         self._host = host
         self._port = int(port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._last_send = time.time()  # Use this to keep track of when the last send command was sent
 
     def connect(self):
         """ Connect to the tcp gateway
@@ -52,11 +56,8 @@ class Russound:
     def is_connected(self):
         """ Check we are connected """
 
-        try:
-            if self.sock.getpeername():
-                return True
-            else:
-                return False
+        try:  # Will throw an expcetion if sock is not connected hence the try catch.
+            return self.sock.getpeername() != ''
         except:
             return False
 
@@ -69,8 +70,9 @@ class Russound:
 
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 23 00 @pr 00 @zz 00 01",
                                             controller, zone, power)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
-        self.receive_data()  # Clear response buffer
+        self.get_response_message()  # Clear response buffer
         _LOGGER.info("Russound on controller %s and zone %s power set to %s.", controller, zone, power)
 
     def set_volume(self, controller, zone, volume):
@@ -81,17 +83,20 @@ class Russound:
 
         _LOGGER.info("Russound volume on controller %s and zone %s set to level %s.", controller, zone, volume)
         send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 21 00 @pr 00 @zz 00 01",
-                                            controller, zone, volume//2)
+                                            controller, zone, volume // 2)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
-        self.receive_data()  # Clear response buffer
+        self.get_response_message()  # Clear response buffer
 
     def set_source(self, controller, zone, source):
         """ Set source for a zone - 0 based value for source """
 
         send_msg = self.create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 00 00 00 F1 3E 00 00 00 @pr 00 01",
                                             controller, zone, source)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
-        self.receive_data()  # Clear response buffer in case there is any response data (ensures correct results on future reads)
+        # Clear response buffer in case there is any response data(ensures correct results on future reads)
+        self.get_response_message()
 
     def all_on_off(self, power):
         """ Turn all zones on or off
@@ -103,7 +108,7 @@ class Russound:
         send_msg = self.create_send_message("F0 7F 00 7F 00 00 @kk 05 02 02 00 00 F1 22 00 00 @pr 00 00 01",
                                             None, None, power)
         self.send_data(send_msg)
-        self.receive_data()  # Clear response buffer
+        self.get_response_message()  # Clear response buffer
 
     def toggle_mute(self, controller, zone):
         """ Toggle mute on/off for a zone
@@ -112,84 +117,53 @@ class Russound:
         send_msg = self.create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01",
                                             controller, zone)
         self.send_data(send_msg)
-        self.receive_data()  # Clear response buffer
+        self.get_response_message()  # Clear response buffer
 
-    def get_power(self, controller, zone):
-        """ Get source power status
-        :return: 0 power off, 1 power on
-        """
+    def get_zone_info(self, controller, zone, return_variable):
+        """ Get all relevant info for the zone """
 
         # Define the signature for a response message, used later to find the correct response from the controller.
         # FF is the hex we use to signify bytes that need to be ignored when comparing to response message.
-        resp_msg_signature = self.create_response_signature(
-            "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 06 00 00 01 00 01 00 FF FF F7", zone)
+        # resp_msg_signature = self.create_response_signature("04 02 00 @zz 07 00 00 01 00 0C", zone)
+        resp_msg_signature = self.create_response_signature("04 02 00 @zz 07", zone)
 
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 06 00 00", controller, zone)
-
+        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 07 00 00", controller, zone)
+        _LOGGER.debug("Sending message %s", send_msg)
         self.send_data(send_msg)
-        response_stream = self.receive_data()  # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
-        matching_message = self.find_matching_message(response_stream, resp_msg_signature)
-        if matching_message is not None:  # Check that the response is the correct length
-            power_state = matching_message[20]
+        # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
+        matching_message = self.get_response_message(resp_msg_signature)
+        if matching_message is not None:
+            # Offset of 11 is the position of return data payload is that we require for the signature we are using.
+            return_value = matching_message[return_variable + 11]
         else:
-            power_state = None
+            return_value = None
             _LOGGER.warning("Error obtaining Russound power state for controller %s and zone %s.", controller, zone)
             _LOGGER.warning("Did not receive expected response message from Russound controller.")
-        return power_state
+        return return_value
 
-    def get_volume(self, controller, zone):
-        """ Get zone volume status
-        Note that Russound internally has a volume range (0..50).  The expected result of this function is 0 to 100.
-        Hence we multiply the result by 2.
-        :return: volume level (0..100).
-        """
-
-        # Define the signature for a response message, used later to find the correct response from the controller.
-        # FF is the hex we use to signify bytes that need to be ignored when comparing to response message.
-        resp_msg_signature = self.create_response_signature(
-            "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 01 00 00 01 00 01 00 FF FF F7", zone)
-
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 01 00 00", controller, zone)
-        self.send_data(send_msg)
-        response_stream = self.receive_data()
-        matching_message = self.find_matching_message(response_stream, resp_msg_signature)
-        if matching_message is not None:
-            volume_level = matching_message[20] * 2  # Note: Referencing a single value from a byte array converts to base10 automatically
-        else:
-            volume_level = None
-            _LOGGER.warning("Error obtaining Russound volume for controller %s and zone %s.", controller, zone)
-            _LOGGER.warning("Did not receive expected response message from Russound controller.")
-        return volume_level
+    def get_power(self, controller, zone):
+        """ Gets the power status as a 0 or 1 which is located on a 0 byte offset """
+        return self.get_zone_info(controller, zone, 0)
 
     def get_source(self, controller, zone):
-        """ Get the currently selected source for the zone
-        :return: a zero based index of the source
-        """
+        """ Gets the selected source as a 0 based index - it is located on a 1 byte offset """
+        return self.get_zone_info(controller, zone, 1)
 
-        # Define the signature for a response message, used later to find the correct response from the controller.
-        # FF is the hex we use to signify bytes that need to be ignored when comparing to response message.
-        resp_msg_signature = self.create_response_signature(
-            "F0 00 00 70 00 00 7F 00 00 04 02 00 @zz 02 00 00 01 00 01 00 FF FF F7", zone)
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 02 00 00", controller, zone)
-        data = self.calc_checksum(send_msg)
-        self.send_data(data)
-        response_stream = self.receive_data()
-        matching_message = self.find_matching_message(response_stream, resp_msg_signature)
-        if matching_message is not None:
-            selected_source = matching_message[20]
-        else:
-            selected_source = None
-            _LOGGER.warning("Error obtaining Russound source for controller %s and zone %s.", controller, zone)
-            _LOGGER.warning("Did not receive expected response message from Russound controller.")
-        return selected_source
+    def get_volume(self, controller, zone):
+        """ Gets the volume level which needs to be doubled to get it to the range of 0..100 -
+        it is located on a 2 byte offset """
+        volume_level = self.get_zone_info(controller, zone, 2)
+        if volume_level is not None:
+            volume_level *= 2
+        return volume_level
 
     def create_send_message(self, string_message, controller, zone=None, parameter=None):
         """ Creates a message from a string, substituting the necessary parameters,
         that is ready to send to the socket """
 
-        cc = hex(int(controller)-1).replace('0x', '')  # RNET requires controller value to be zero based
+        cc = hex(int(controller) - 1).replace('0x', '')  # RNET requires controller value to be zero based
         if zone is not None:
-            zz = hex(int(zone)-1).replace('0x', '')  # RNET requires zone value to be zero based
+            zz = hex(int(zone) - 1).replace('0x', '')  # RNET requires zone value to be zero based
         else:
             zz = ''
         if parameter is not None:
@@ -218,23 +192,33 @@ class Russound:
     def send_data(self, data, delay=COMMAND_DELAY):
         """ Send data to connected gateway """
 
-        time.sleep(delay)  # Insert recommended delay to ensure command is processed correctly
+        time_since_last_send = time.time() - self._last_send
+        delay = max(0, delay - time_since_last_send)
+        time.sleep(delay)  # Ensure minim recommended delay since last send
+
         for item in data:
             data = bytes.fromhex(str(item.zfill(2)))
             try:
                 self.sock.send(data)
             except ConnectionResetError as msg:
                 _LOGGER.error("Error trying to connect to Russound controller. "
-                        "Check that no other device or system is using the port that you are trying to connect to. "
-                        "Try resetting the bridge you are using to connect.")
+                              "Check that no other device or system is using the port that "
+                              "you are trying to connect to. Try resetting the bridge you are using to connect.")
                 _LOGGER.error(msg)
+        self._last_send = time.time()
 
-    def receive_data(self, delay=COMMAND_DELAY, no_of_socket_reads=1):
-        """ Receive data from connected gateway
-        Based on testing, 100ms is enough to provide the full response message.  It is unlikely the this will be
-        influenced heavily by the environment, since message a very short and typical operation is in a LAN context.
-        Therefore by default we wait for 100ms before processing the recevie (as recommended) and make one read attempt.
-        """
+    def get_response_message(self, resp_msg_signature=None, delay=COMMAND_DELAY):
+        """ Receive data from connected gateway and if required seach and return a stream that starts at the required
+        response message signature.  The reason we couple the search for the response signature here is that given the
+        RNET protocol and TCP comms, we dont have an easy way of knowign that we have received the response.  We want to
+        minimise the time spent reading the socket (to reduce user lag), hence we use the message response signature
+        at this point to determine when to stop reading."""
+
+        matching_message = None  # Set intial value to none (assume no response found)
+        if resp_msg_signature is None:
+            no_of_socket_reads = 1  # If we are not looking for a specific response do a single read to clear the buffer
+        else:
+            no_of_socket_reads = 10  # Try 10x (= approx 1s at default)if we are looking for a specific response
 
         time.sleep(delay)  # Insert recommended delay to ensure command is processed correctly
         self.sock.setblocking(0)  # Needed to prevent request for waiting indefinitely
@@ -242,60 +226,50 @@ class Russound:
         data = b''
         for i in range(0, no_of_socket_reads):
             try:
-                # Receive whatever has been sent
-                data += self.sock.recv(8192)
-                # Check that the last character represent end of message
+                # Receive what has been sent
+                data += self.sock.recv(4096)
             except BlockingIOError:  # Expected outcome if there is not data
                 pass
             except ConnectionResetError as msg:
-                _LOGGER.error("Error trying to connect to Russound controller. "
-                        "Check that no other device or system is using the port that you are tryiong to connect to. "
-                        "Try resetting the bridge you are using to connect.")
+                _LOGGER.error("Error trying to connect to Russound controller. Check that no other device or system "
+                              "is using the port that you are tryiong to connect to. "
+                              "Try resetting the bridge you are using to connect.")
                 _LOGGER.error(msg)
-            time.sleep(delay)  # Wait before reading again
-        return data
+            # Check if we have our message.  If so break out else keep looping.
+            if resp_msg_signature is not None:  # If we are looking for a specific repsonse
+                matching_message, data = self.find_signature(data, resp_msg_signature)
+            if matching_message is not None:  # Required response found
+                _LOGGER.debug("Number of reads=%s", i + 1)
+                break
+            time.sleep(delay)  # Wait before reading again - default of 100ms
+        _LOGGER.debug(data)
+        return matching_message
 
-    def find_matching_message(self, data_stream, msg_signature):
+    def find_signature(self, data_stream, msg_signature):
         """ Takes the stream of bytes received and looks for a message that matches the signature
         of the expected response """
 
-        matched_message = None  # The message that will be returned if it matches the signature
-        returned_messages = self.get_received_messages(data_stream)  # get list of messages from response stream
+        signature_match_index = None  # The message that will be returned if it matches the signature
         msg_signature = msg_signature.split()  # Split into list
         # convert to bytearray in order to be able to compare with the messages list which contains bytearrays
         msg_signature = bytearray(int(x, 16) for x in msg_signature)
         # loop through each message returned from Russound
-        for returned_message in returned_messages:
-            matched_message = None  # Assume no match
-            if len(msg_signature) == len(returned_message):  # Eliminate obvious mistmatch if msgs not same length
-                matched_message = returned_message  # Assume its a match
-                #  loop through each byte and see if the are different
-                for i in range(0, len(returned_message)):
-                    # Only test if bytes are the same if signature msg byte is not 255 (our ignore value)
-                    # Note when returning a single byte a list it evalautes to an integer
-                    if msg_signature[i] != 255 and msg_signature[i] != returned_message[i]:
-                        matched_message = None  # No match found
-                        break
-                if matched_message is not None:  # Loop complete.  If match found break out of out loop.
-                    break
-        return matched_message
+        index_of_last_f7 = None
+        for i in range(len(data_stream)):
+            if data_stream[i] == 247:
+                index_of_last_f7 = i
+            if data_stream[i:i + len(msg_signature)] == msg_signature:
+                signature_match_index = i
+                break
+        if signature_match_index is None:
+            # Scrap bytes up to end of msg (to avoid searching these again)
+            data_stream = data_stream[index_of_last_f7:len(data_stream)]
+            matching_message = None
+        else:
+            matching_message = data_stream[signature_match_index:len(data_stream)]
 
-    def get_received_messages(self, data_stream):
-        """ Break received stream into a list of RNET messages, based on start and end characters """
-
-        messages = []  # List of messages that will be returned
-        start_index = -1
-        end_index = -1
-        for i in range(0, len(data_stream)):
-            if data_stream[i] == 240:  # Start character (F0)
-                start_index = i
-            if data_stream[i] == 247:  # End character (F7)
-                end_index = i
-                if start_index > -1:  # Start and end have been found - therefore extract a full message
-                    message = data_stream[start_index:end_index + 1]
-                    start_index = -1
-                    messages.append(message)
-        return messages
+        _LOGGER.debug("Message signature found at location: %s", signature_match_index)
+        return matching_message, data_stream
 
     def calc_checksum(self, data):
         """ Calculate the checksum we need """
@@ -311,10 +285,11 @@ class Russound:
         data.append('F7')
         return data
 
-    def __exit__(self):
+    def __exit__(self, exception_type, exception_value, traceback):
         """ Close connection to gateway """
         try:
             self.sock.close()
             _LOGGER.info("Closed connection to Russound on %s:%s", self._host, self._port)
         except socket.error as msg:
             _LOGGER.error("Couldn't disconnect")
+            _LOGGER.error(msg)
