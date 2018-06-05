@@ -1,3 +1,5 @@
+> Moved to https://gitlab.com/lafwud/russound/
+
 # Russound Python API
 Implements a Python API for selected commands to the Russound system using the RNET protocol predominantly developed to
 provide Russound support within home-assistant.io.
