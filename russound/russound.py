@@ -47,7 +47,7 @@ class Russound:
         If keypad value is omitted, then set it to the hex value of 70 which is the recommended value for an external
         device controlling the system (top of pg 3 of cav6.6_rnet_protocol_v1.01.00.pdf). (In fact I don't know under
         what circumstances we would actually want to pass a keypadID at all).
-        Each call to conenct will create a new socket and use it to connect. This allows recovery from a broken socket.
+        Each call to connect will create a new socket and use it to connect. This allows recovery from a broken socket.
         """
 
         with self.lock:
@@ -70,7 +70,7 @@ class Russound:
     def is_connected(self):
         """ Check we are connected """
 
-        try:  # Will throw an expcetion if sock is not connected hence the try catch.
+        try:  # Will throw an exception if sock is not connected hence the try catch.
             return self.sock and self.sock.getpeername() != ''
         except:
             return False
@@ -157,7 +157,7 @@ class Russound:
         resp_msg_signature = self.__create_response_signature("04 02 00 @zz 07", zone)
         send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 07 00 00", controller, zone)
         with self.lock:
-            _LOGGER.debug('acquired lockzone %s', zone)
+            _LOGGER.debug('Acquired lock zone for zone %s', zone)
             self.__send_data(send_msg)
             _LOGGER.debug("Zone: %s Sent: %s", zone, send_msg)
             # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
