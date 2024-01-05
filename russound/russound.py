@@ -37,7 +37,7 @@ class Russound:
 
         self._host = host
         self._port = int(port)
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock = None
         self._last_send = time.time()  # Use this to keep track of when the last send command was sent
         self.lock = threading.Lock()   # Used to ensure only one thread sends commands to the Russound
 
@@ -47,22 +47,31 @@ class Russound:
         If keypad value is omitted, then set it to the hex value of 70 which is the recommended value for an external
         device controlling the system (top of pg 3 of cav6.6_rnet_protocol_v1.01.00.pdf). (In fact I don't know under
         what circumstances we would actually want to pass a keypadID at all).
+        Each call to conenct will create a new socket and use it to connect. This allows recovery from a broken socket.
         """
 
-        try:
-            self.sock.connect((self._host, self._port))
-            _LOGGER.info("Successfully connected to Russound on %s:%s", self._host, self._port)
-            return True
-        except socket.error as msg:
-            _LOGGER.error("Error trying to connect to Russound controller.")
-            _LOGGER.error(msg)
-            return False
+        with self.lock:
+            try:
+                if self.sock is not None:
+                    try:
+                        self.sock.close()
+                    except socket.error:
+                        pass
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect((self._host, self._port))
+                _LOGGER.info("Successfully connected to Russound on %s:%s", self._host, self._port)
+                return True
+            except socket.error as msg:
+                self.sock = None
+                _LOGGER.error("Error trying to connect to Russound controller.")
+                _LOGGER.error(msg)
+                return False
 
     def is_connected(self):
         """ Check we are connected """
 
         try:  # Will throw an expcetion if sock is not connected hence the try catch.
-            return self.sock.getpeername() != ''
+            return self.sock and self.sock.getpeername() != ''
         except:
             return False
 
@@ -129,7 +138,7 @@ class Russound:
         Note: Not tested (acambitsis) """
 
         send_msg = self.__create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01", controller, zone)
-        
+
         with self.lock:
             self.__send_data(send_msg)
             self.__get_response_message()  # Clear response buffer
