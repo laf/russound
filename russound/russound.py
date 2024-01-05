@@ -74,18 +74,13 @@ class Russound:
         """
 
         _LOGGER.debug("Begin - controller= %s, zone= %s, change power to %s",controller, zone, power)
-        send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 23 00 @pr 00 @zz 00 01",
-                                            controller, zone, power)
-        try:
-            self.lock.acquire()
-            _LOGGER.debug('Zone %s - acquired lock for ', zone)
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 23 00 @pr 00 @zz 00 01", controller, zone, power)
+        with self.lock:
+            _LOGGER.debug('Zone %s - acquired lock', zone)
             self.__send_data(send_msg)
             _LOGGER.debug("Zone %s - sent message %s", zone, send_msg)
             self.__get_response_message()  # Clear response buffer
-        finally:
-            self.lock.release()
-            _LOGGER.debug("Zone %s - released lock for ", zone)
-            _LOGGER.debug("End - controller %s, zone %s, power set to %s.\n", controller, zone, power)
+        _LOGGER.debug("End - controller %s, zone %s, power set to %s.\n", controller, zone, power)
 
     def set_volume(self, controller, zone, volume):
         """ Set volume for zone to specific value.
@@ -96,16 +91,12 @@ class Russound:
         _LOGGER.debug("Begin - controller= %s, zone= %s, change volume to %s",controller, zone, volume)
         send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 21 00 @pr 00 @zz 00 01",
                                             controller, zone, volume // 2)
-        try:
-            self.lock.acquire()
-            _LOGGER.debug('Zone %s - acquired lock for ', zone)
+        with self.lock:
+            _LOGGER.debug('Zone %s - acquired lock', zone)
             self.__send_data(send_msg)
             _LOGGER.debug("Zone %s - sent message %s", zone, send_msg)
             self.__get_response_message()  # Clear response buffer
-        finally:
-            self.lock.release()
-            _LOGGER.debug("Zone %s - released lock for ", zone)
-            _LOGGER.debug("End - controller %s, zone %s, volume set to %s.\n", controller, zone, volume)
+        _LOGGER.debug("End - controller %s, zone %s, volume set to %s.\n", controller, zone, volume)
 
     def set_source(self, controller, zone, source):
         """ Set source for a zone - 0 based value for source """
@@ -113,17 +104,13 @@ class Russound:
         _LOGGER.info("Begin - controller= %s, zone= %s change source to %s.", controller, zone, source)
         send_msg = self.__create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 00 00 00 F1 3E 00 00 00 @pr 00 01",
                                             controller, zone, source)
-        try:
-            self.lock.acquire()
-            _LOGGER.debug('Zone %s - acquired lock for ', zone)
+        with self.lock:
+            _LOGGER.debug('Zone %s - acquired lock', zone)
             self.__send_data(send_msg)
             _LOGGER.debug("Zone %s - sent message %s", zone, send_msg)
             # Clear response buffer in case there is any response data(ensures correct results on future reads)
             self.__get_response_message()
-        finally:
-            self.lock.release()
-            _LOGGER.debug("Zone %s - released lock for ", zone)
-            _LOGGER.debug("End - controller= %s, zone= %s source set to %s.\n", controller, zone, source)
+        _LOGGER.debug("End - controller= %s, zone= %s source set to %s.\n", controller, zone, source)
 
     def all_on_off(self, power):
         """ Turn all zones on or off
@@ -132,19 +119,20 @@ class Russound:
         Note: Not tested (acambitsis)
         """
 
-        send_msg = self.__create_send_message("F0 7F 00 7F 00 00 @kk 05 02 02 00 00 F1 22 00 00 @pr 00 00 01",
-                                            None, None, power)
-        self.__send_data(send_msg)
-        self.__get_response_message()  # Clear response buffer
+        send_msg = self.__create_send_message("F0 7F 00 7F 00 00 @kk 05 02 02 00 00 F1 22 00 00 @pr 00 00 01", None, None, power)
+        with self.lock:
+            self.__send_data(send_msg)
+            self.__get_response_message()  # Clear response buffer
 
     def toggle_mute(self, controller, zone):
         """ Toggle mute on/off for a zone
         Note: Not tested (acambitsis) """
 
-        send_msg = self.__create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01",
-                                            controller, zone)
-        self.__send_data(send_msg)
-        self.__get_response_message()  # Clear response buffer
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01", controller, zone)
+        
+        with self.lock:
+            self.__send_data(send_msg)
+            self.__get_response_message()  # Clear response buffer
 
     def get_zone_info(self, controller, zone, return_variable):
         """ Get all relevant info for the zone
@@ -159,9 +147,8 @@ class Russound:
         _LOGGER.debug("Begin - controller= %s, zone= %s, get status", controller, zone)
         resp_msg_signature = self.__create_response_signature("04 02 00 @zz 07", zone)
         send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 07 00 00", controller, zone)
-        try:
-            self.lock.acquire()
-            _LOGGER.debug('Acquired lock for zone %s', zone)
+        with self.lock:
+            _LOGGER.debug('acquired lockzone %s', zone)
             self.__send_data(send_msg)
             _LOGGER.debug("Zone: %s Sent: %s", zone, send_msg)
             # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
@@ -177,11 +164,9 @@ class Russound:
             else:
                 return_value = None
                 _LOGGER.warning("Did not receive expected Russound power state for controller %s and zone %s.", controller, zone)
-        finally:
-            self.lock.release()
-            _LOGGER.debug("Released lock for zone %s", zone)
-            _LOGGER.debug("End - controller= %s, zone= %s, get status \n", controller, zone)
-            return return_value
+        
+        _LOGGER.debug("End - controller= %s, zone= %s, get status \n", controller, zone)
+        return return_value
 
     def get_power(self, controller, zone):
         """ Gets the power status as a 0 or 1 which is located on a 0 byte offset """
