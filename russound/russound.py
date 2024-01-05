@@ -74,14 +74,14 @@ class Russound:
         """
 
         _LOGGER.debug("Begin - controller= %s, zone= %s, change power to %s",controller, zone, power)
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 23 00 @pr 00 @zz 00 01",
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 23 00 @pr 00 @zz 00 01",
                                             controller, zone, power)
         try:
             self.lock.acquire()
             _LOGGER.debug('Zone %s - acquired lock for ', zone)
-            self.send_data(send_msg)
+            self.__send_data(send_msg)
             _LOGGER.debug("Zone %s - sent message %s", zone, send_msg)
-            self.get_response_message()  # Clear response buffer
+            self.__get_response_message()  # Clear response buffer
         finally:
             self.lock.release()
             _LOGGER.debug("Zone %s - released lock for ", zone)
@@ -94,14 +94,14 @@ class Russound:
         """
 
         _LOGGER.debug("Begin - controller= %s, zone= %s, change volume to %s",controller, zone, volume)
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 21 00 @pr 00 @zz 00 01",
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 05 02 02 00 00 F1 21 00 @pr 00 @zz 00 01",
                                             controller, zone, volume // 2)
         try:
             self.lock.acquire()
             _LOGGER.debug('Zone %s - acquired lock for ', zone)
-            self.send_data(send_msg)
+            self.__send_data(send_msg)
             _LOGGER.debug("Zone %s - sent message %s", zone, send_msg)
-            self.get_response_message()  # Clear response buffer
+            self.__get_response_message()  # Clear response buffer
         finally:
             self.lock.release()
             _LOGGER.debug("Zone %s - released lock for ", zone)
@@ -111,15 +111,15 @@ class Russound:
         """ Set source for a zone - 0 based value for source """
 
         _LOGGER.info("Begin - controller= %s, zone= %s change source to %s.", controller, zone, source)
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 00 00 00 F1 3E 00 00 00 @pr 00 01",
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 00 00 00 F1 3E 00 00 00 @pr 00 01",
                                             controller, zone, source)
         try:
             self.lock.acquire()
             _LOGGER.debug('Zone %s - acquired lock for ', zone)
-            self.send_data(send_msg)
+            self.__send_data(send_msg)
             _LOGGER.debug("Zone %s - sent message %s", zone, send_msg)
             # Clear response buffer in case there is any response data(ensures correct results on future reads)
-            self.get_response_message()
+            self.__get_response_message()
         finally:
             self.lock.release()
             _LOGGER.debug("Zone %s - released lock for ", zone)
@@ -132,19 +132,19 @@ class Russound:
         Note: Not tested (acambitsis)
         """
 
-        send_msg = self.create_send_message("F0 7F 00 7F 00 00 @kk 05 02 02 00 00 F1 22 00 00 @pr 00 00 01",
+        send_msg = self.__create_send_message("F0 7F 00 7F 00 00 @kk 05 02 02 00 00 F1 22 00 00 @pr 00 00 01",
                                             None, None, power)
-        self.send_data(send_msg)
-        self.get_response_message()  # Clear response buffer
+        self.__send_data(send_msg)
+        self.__get_response_message()  # Clear response buffer
 
     def toggle_mute(self, controller, zone):
         """ Toggle mute on/off for a zone
         Note: Not tested (acambitsis) """
 
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01",
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 @zz @kk 05 02 02 00 00 F1 40 00 00 00 0D 00 01",
                                             controller, zone)
-        self.send_data(send_msg)
-        self.get_response_message()  # Clear response buffer
+        self.__send_data(send_msg)
+        self.__get_response_message()  # Clear response buffer
 
     def get_zone_info(self, controller, zone, return_variable):
         """ Get all relevant info for the zone
@@ -157,15 +157,15 @@ class Russound:
         # resp_msg_signature = self.create_response_signature("04 02 00 @zz 07 00 00 01 00 0C", zone)
 
         _LOGGER.debug("Begin - controller= %s, zone= %s, get status", controller, zone)
-        resp_msg_signature = self.create_response_signature("04 02 00 @zz 07", zone)
-        send_msg = self.create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 07 00 00", controller, zone)
+        resp_msg_signature = self.__create_response_signature("04 02 00 @zz 07", zone)
+        send_msg = self.__create_send_message("F0 @cc 00 7F 00 00 @kk 01 04 02 00 @zz 07 00 00", controller, zone)
         try:
             self.lock.acquire()
             _LOGGER.debug('Acquired lock for zone %s', zone)
-            self.send_data(send_msg)
+            self.__send_data(send_msg)
             _LOGGER.debug("Zone: %s Sent: %s", zone, send_msg)
             # Expected response is as per pg 23 of cav6.6_rnet_protocol_v1.01.00.pdf
-            matching_message = self.get_response_message(resp_msg_signature)
+            matching_message = self.__get_response_message(resp_msg_signature)
             if matching_message is not None:
                 # Offset of 11 is the position of return data payload is that we require for the signature we are using.
                 _LOGGER.debug("matching message to use= %s", matching_message)
@@ -199,7 +199,7 @@ class Russound:
             volume_level *= 2
         return volume_level
 
-    def create_send_message(self, string_message, controller, zone=None, parameter=None):
+    def __create_send_message(self, string_message, controller, zone=None, parameter=None):
         """ Creates a message from a string, substituting the necessary parameters,
         that is ready to send to the socket """
 
@@ -220,10 +220,10 @@ class Russound:
 
         # Split message into an array for each "byte" and add the checksum and end of message bytes
         send_msg = string_message.split()
-        send_msg = self.calc_checksum(send_msg)
+        send_msg = self.__calc_checksum(send_msg)
         return send_msg
 
-    def create_response_signature(self, string_message, zone):
+    def __create_response_signature(self, string_message, zone):
         """ Basic helper function to keep code clean for defining a response message signature """
 
         zz = ''
@@ -232,7 +232,7 @@ class Russound:
         string_message = string_message.replace('@zz', zz)  # Replace zone parameter
         return string_message
 
-    def send_data(self, data, delay=COMMAND_DELAY):
+    def __send_data(self, data, delay=COMMAND_DELAY):
         """ Send data to connected gateway """
 
         time_since_last_send = time.time() - self._last_send
@@ -250,7 +250,7 @@ class Russound:
                 _LOGGER.error(msg)
         self._last_send = time.time()
 
-    def get_response_message(self, resp_msg_signature=None, delay=COMMAND_DELAY):
+    def __get_response_message(self, resp_msg_signature=None, delay=COMMAND_DELAY):
         """ Receive data from connected gateway and if required seach and return a stream that starts at the required
         response message signature.  The reason we couple the search for the response signature here is that given the
         RNET protocol and TCP comms, we dont have an easy way of knowign that we have received the response.  We want to
@@ -282,14 +282,14 @@ class Russound:
                 _LOGGER.error(msg)
             # Check if we have our message.  If so break out else keep looping.
             if resp_msg_signature is not None:  # If we are looking for a specific response
-                matching_message, data = self.find_signature(data, resp_msg_signature)
+                matching_message, data = self.__find_signature(data, resp_msg_signature)
             if matching_message is not None:  # Required response found
                 _LOGGER.debug("Number of reads=%s", i + 1)
                 break
             time.sleep(delay)  # Wait before reading again - default of 100ms
         return matching_message
 
-    def find_signature(self, data_stream, msg_signature):
+    def __find_signature(self, data_stream, msg_signature):
         """ Takes the stream of bytes received and looks for a message that matches the signature
         of the expected response """
 
@@ -316,7 +316,7 @@ class Russound:
         _LOGGER.debug("Message signature found at location: %s", signature_match_index)
         return matching_message, data_stream
 
-    def calc_checksum(self, data):
+    def __calc_checksum(self, data):
         """ Calculate the checksum we need """
 
         output = 0
