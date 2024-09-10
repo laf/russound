@@ -23,4 +23,8 @@ setup(name='russound',
       zip_safe=False,
       packages=find_packages(),
       include_package_data=True,
-      url='https://github.com/laf/russound.git')
+      url='https://github.com/laf/russound.git',
+      classifiers=[
+            'License :: OSI Approved :: GNU General Public License v3 (GPLv3)'
+      ]
+)
